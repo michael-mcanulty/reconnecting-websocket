@@ -5,10 +5,10 @@
     "main": "./dist/reconnecting-websocket.js",
     "types": "./dist/reconnecting-websocket.d.ts",
     "scripts": {
-    "start": "tsc -p tsconfig.json && node dist/index.js",
-    "build:live": "nodemon --exec ./node_modules/.bin/ts-node -- ./src/index.ts",
-    "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/index.js",
-  },
+        "start": "tsc -p tsconfig.json && node dist/index.js",
+        "build:live": "nodemon --exec ./node_modules/.bin/ts-node -- ./src/index.ts",
+        "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/index.js",
+    },
     "keywords": [
         "websocket",
         "client",
@@ -23,11 +23,9 @@
     "author": "Pedro Ladaria <pedro.ladaria@gmail.com>",
     "license": "MIT",
     "devDependencies": {
-    "ts-node": "^3.3.0"
-        "ws": "^5.1.1"
+        "ts-node": "^3.3.0"
     },
-   "dependencies": {
-    "ws": "^5.2.1"
-  },
-    "homepage": "https://github.com/pladaria/reconnecting-websocket#readme",
+    "dependencies": {
+        "ws": "^5.2.1"
+    },
 }
