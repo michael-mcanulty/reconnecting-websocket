@@ -7,7 +7,7 @@
     "scripts": {
         "start": "tsc -p tsconfig.json && node dist/reconnecting-websocket.js",
         "build:live": "nodemon --exec ./node_modules/.bin/ts-node -- reconnecting-websocket.ts",
-        "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/reconnecting-websocket.js",
+        "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/reconnecting-websocket.js"
     },
     "keywords": [
         "websocket",
@@ -27,5 +27,5 @@
     },
     "dependencies": {
         "ws": "^5.2.1"
-    },
+    }
 }
