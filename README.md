@@ -23,13 +23,18 @@ Add the reconnecting-websocket.ts file directly to your project.
 ### Simple usage
 
 ```typescript
+import * as Html5WebSocket from 'html5-websocket'
 import {default as ReconnectingWebSocket, IReconOptions} from "./ReconnectingWebSocket/ReconnectingWebSocket";
 
-let socket: ReconnectingWebSocket = new ReconnectingWebSocket('ws://my.site.com', this._reconOptions);
+let _reconOptions: IReconOptions = <IReconOptions>{};
+_reconOptions.connectionTimeout = 4E3;
+_reconOptions.constructor = typeof window !== 'undefined' ? BotWebsocket : Html5WebSocket;
+_reconOptions.debug = false;
+_reconOptions.maxReconnectionDelay = 10E3;
+_reconOptions.maxRetries = Infinity;
+_reconOptions.minReconnectionDelay = 4E3;
 
-rws.addEventListener('open', () => {
-    rws.send('hello!');
-});
+let socket: ReconnectingWebSocket = new ReconnectingWebSocket('ws://my.site.com', this._reconOptions);
 ```
 
 ### Options
