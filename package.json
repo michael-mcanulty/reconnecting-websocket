@@ -1,5 +1,5 @@
 {
-    "name": "reconnecting-websocket",
+    "name": "@michael-mcanulty/reconnecting-websocket",
     "version": "5.0.0",
     "description": "Reconnecting WebSocket",
     "main": "./dist/reconnecting-websocket.js",
