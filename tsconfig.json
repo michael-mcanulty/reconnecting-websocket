@@ -5,6 +5,7 @@
     ],
     "sourceMap": true,
     "inlineSources": true,
+    "outDir": "dist",
     "module": "commonjs",
     "target": "es2016",
     "suppressImplicitAnyIndexErrors": true,
