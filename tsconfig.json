@@ -1,9 +1,18 @@
 {
-    "compilerOptions": {
-        "alwaysStrict": true,
-        "module": "ESNext",
-        "strict": true,
-        "target": "esnext",
-        "declaration": true
-    }
+  "compilerOptions": {
+    "lib": [
+      "es2016"
+    ],
+    "sourceMap": true,
+    "inlineSources": true,
+    "module": "commonjs",
+    "target": "es2016",
+    "suppressImplicitAnyIndexErrors": true,
+    "noImplicitAny": false,
+    "preserveConstEnums": true,
+    "removeComments": true
+  },
+  "exclude": [
+    "node_modules"
+  ]
 }
