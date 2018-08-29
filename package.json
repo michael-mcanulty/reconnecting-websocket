@@ -5,9 +5,9 @@
     "main": "./dist/reconnecting-websocket.js",
     "types": "./dist/reconnecting-websocket.d.ts",
     "scripts": {
-        "start": "tsc -p tsconfig.json && node dist/index.js",
-        "build:live": "nodemon --exec ./node_modules/.bin/ts-node -- ./src/index.ts",
-        "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/index.js",
+        "start": "tsc -p tsconfig.json && node dist/reconnecting-websocket.js",
+        "build:live": "nodemon --exec ./node_modules/.bin/ts-node -- reconnecting-websocket.ts",
+        "debug": "tsc -p tsconfig.json && node --inspect --debug-brk dist/reconnecting-websocket.js",
     },
     "keywords": [
         "websocket",
