@@ -1,432 +1,450 @@
 /*!
- * Reconnecting WebSocket
+ * Reconnecting BaseWebSocket
  * by Pedro Ladaria <pedro.ladaria@gmail.com>
  * https://github.com/pladaria/reconnecting-websocket
  * License MIT
  */
-import {CloseEvent, ErrorEvent, Event, EventListener, WebSocketEventMap} from './events';
 
-const getGlobalWebSocket = (): WebSocket | undefined => {
-    if (typeof WebSocket !== 'undefined') {
-        // @ts-ignore
-        return WebSocket;
-    }
-};
+import * as WebSocket from "ws";
+
+import {CloseEvent, ErrorEvent, Event, WebSocketEventMap} from './Events';
 
 /**
- * Returns true if given argument looks like a WebSocket class
+ * Returns true if given argument looks like a BaseWebSocket class
  */
-const isWebSocket = (w: any) => typeof w === 'function' && w.CLOSING === 2;
 
-export type Options = {
-    WebSocket?: any;
-    maxReconnectionDelay?: number;
-    minReconnectionDelay?: number;
-    reconnectionDelayGrowFactor?: number;
-    minUptime?: number;
-    connectionTimeout?: number;
-    maxRetries?: number;
-    debug?: boolean;
-};
-
-const DEFAULT = {
-    maxReconnectionDelay: 10000,
-    minReconnectionDelay: 1000 + Math.random() * 4000,
-    minUptime: 5000,
-    reconnectionDelayGrowFactor: 1.3,
-    connectionTimeout: 4000,
-    maxRetries: Infinity,
-    debug: false,
-};
+export interface IReconOptions {
+	WebSocket?: any;
+	connectionTimeout?: number;
+	debug?: boolean;
+	maxReconnectionDelay?: number;
+	maxRetries?: number;
+	minReconnectionDelay?: number;
+	minUptime?: number;
+	reconnectionDelayGrowFactor?: number;
+}
 
 export type UrlProvider = string | (() => string) | (() => Promise<string>);
 
 export type ListenersMap = {
-    error: Array<((event: ErrorEvent) => void)>;
-    message: Array<((event: MessageEvent) => void)>;
-    open: Array<((event: Event) => void)>;
-    close: Array<((event: CloseEvent) => void)>;
+	error: Array<((event: ErrorEvent) => void)>;
+	message: Array<((event: MessageEvent) => void)>;
+	open: Array<((event: Event) => void)>;
+	close: Array<((event: CloseEvent) => void)>;
 };
+
 export default class ReconnectingWebSocket {
-    private _ws?: WebSocket;
-    private _listeners: ListenersMap = {
-        error: [],
-        message: [],
-        open: [],
-        close: [],
-    };
-    private _retryCount = -1;
-    private _uptimeTimeout: any;
-    private _connectTimeout: any;
-    private _shouldReconnect = true;
-    private _connectLock = false;
-    private _binaryType = 'blob';
+	private _connectLock = false;
+	private _connectTimeout: any;
+	private _listeners: ListenersMap = {
+		error: [],
+		message: [],
+		open: [],
+		close: [],
+	};
+	private readonly _options: IReconOptions;
+	private readonly _protocols?: string | string[];
+	private _shouldReconnect = true;
+	private _uptimeTimeout: any;
+	private readonly _url: UrlProvider;
+	private _ws?: WebSocket;
+	private readonly eventToHandler = new Map<keyof WebSocketEventMap, any>([
+		['open', this._handleOpen.bind(this)],
+		['close', this._handleClose.bind(this)],
+		['error', this._handleError.bind(this)],
+		['message', this._handleMessage.bind(this)],
+	]);
+	/**
+	 * An event listener to be called when the BaseWebSocket connection's readyState changes to CLOSED
+	 */
+	public onclose?: (event: CloseEvent) => void = undefined;
+	/**
+	 * An event listener to be called when an error occurs
+	 */
+	public onerror?: (event: Event) => void = undefined;
+	/**
+	 * An event listener to be called when a message is received from the server
+	 */
+	public onmessage?: (event: MessageEvent) => void = undefined;
+	/**
+	 * An event listener to be called when the BaseWebSocket connection's readyState changes to OPEN;
+	 * this indicates that the connection is ready to send and receive data
+	 */
+	public onopen?: (event: Event) => void = undefined;
 
-    private readonly _url: UrlProvider;
-    private readonly _protocols?: string | string[];
-    private readonly _options: Options;
+	static get CLOSED() {
+		return 3;
+	}
 
-    private readonly eventToHandler = new Map<keyof WebSocketEventMap, any>([
-        ['open', this._handleOpen.bind(this)],
-        ['close', this._handleClose.bind(this)],
-        ['error', this._handleError.bind(this)],
-        ['message', this._handleMessage.bind(this)],
-    ]);
+	get CLOSED() {
+		return ReconnectingWebSocket.CLOSED;
+	}
 
-    constructor(url: UrlProvider, protocols?: string | string[], options: Options = {}) {
-        this._url = url;
-        this._protocols = protocols;
-        this._options = options;
-        this._connect();
-    }
+	static get CLOSING() {
+		return 2;
+	}
 
-    static get CONNECTING() {
-        return 0;
-    }
-    static get OPEN() {
-        return 1;
-    }
-    static get CLOSING() {
-        return 2;
-    }
-    static get CLOSED() {
-        return 3;
-    }
+	get CLOSING() {
+		return ReconnectingWebSocket.CLOSING;
+	}
 
-    get CONNECTING() {
-        return ReconnectingWebSocket.CONNECTING;
-    }
-    get OPEN() {
-        return ReconnectingWebSocket.OPEN;
-    }
-    get CLOSING() {
-        return ReconnectingWebSocket.CLOSING;
-    }
-    get CLOSED() {
-        return ReconnectingWebSocket.CLOSED;
-    }
+	static get CONNECTING() {
+		return 0;
+	}
 
-    get binaryType(): string {
-        return this._ws ? this._ws.binaryType : this._binaryType;
-    }
+	get CONNECTING() {
+		return ReconnectingWebSocket.CONNECTING;
+	}
 
-    set binaryType(value: string) {
-        this._binaryType = value;
-        if (this._ws) {
-            // @ts-ignore
-            this._ws.binaryType = value;
-        }
-    }
+	static get OPEN() {
+		return 1;
+	}
 
-    /**
-     * Returns the number or connection retries
-     */
-    get retryCount(): number {
-        return Math.max(this._retryCount, 0);
-    }
+	get OPEN() {
+		return ReconnectingWebSocket.OPEN;
+	}
 
-    /**
-     * The number of bytes of data that have been queued using calls to send() but not yet
-     * transmitted to the network. This value resets to zero once all queued data has been sent.
-     * This value does not reset to zero when the connection is closed; if you keep calling send(),
-     * this will continue to climb. Read only
-     */
-    get bufferedAmount(): number {
-        return this._ws ? this._ws.bufferedAmount : 0;
-    }
+	private _binaryType = 'blob';
 
-    /**
-     * The extensions selected by the server. This is currently only the empty string or a list of
-     * extensions as negotiated by the connection
-     */
-    get extensions(): string {
-        return this._ws ? this._ws.extensions : '';
-    }
+	get binaryType(): string {
+		return this._ws ? this._ws.binaryType : this._binaryType;
+	}
 
-    /**
-     * A string indicating the name of the sub-protocol the server selected;
-     * this will be one of the strings specified in the protocols parameter when creating the
-     * WebSocket object
-     */
-    get protocol(): string {
-        return this._ws ? this._ws.protocol : '';
-    }
+	set binaryType(value: string) {
+		this._binaryType = value;
+		if (this._ws) {
+			// @ts-ignore
+			this._ws.binaryType = value;
+		}
+	}
 
-    /**
-     * The current state of the connection; this is one of the Ready state constants
-     */
-    get readyState(): number {
-        return this._ws ? this._ws.readyState : ReconnectingWebSocket.CONNECTING;
-    }
+	private _retryCount = -1;
 
-    /**
-     * The URL as resolved by the constructor
-     */
-    get url(): string {
-        return this._ws ? this._ws.url : '';
-    }
+	/**
+	 * Returns the number or connection retries
+	 */
+	get retryCount(): number {
+		return Math.max(this._retryCount, 0);
+	}
 
-    /**
-     * An event listener to be called when the WebSocket connection's readyState changes to CLOSED
-     */
-    public onclose?: (event: CloseEvent) => void = undefined;
+	/**
+	 * The number of bytes of data that have been queued using calls to send() but not yet
+	 * transmitted to the network. This value resets to zero once all queued data has been sent.
+	 * This value does not reset to zero when the connection is closed; if you keep calling send(),
+	 * this will continue to climb. Read only
+	 */
+	get bufferedAmount(): number {
+		return this._ws ? this._ws.bufferedAmount : 0;
+	}
 
-    /**
-     * An event listener to be called when an error occurs
-     */
-    public onerror?: (event: Event) => void = undefined;
+	/**
+	 * The extensions selected by the server. This is currently only the empty string or a list of
+	 * extensions as negotiated by the connection
+	 */
+	get extensions(): string {
+		return this._ws ? this._ws.extensions : '';
+	}
 
-    /**
-     * An event listener to be called when a message is received from the server
-     */
-    public onmessage?: (event: MessageEvent) => void = undefined;
+	/**
+	 * A string indicating the name of the sub-protocol the server selected;
+	 * this will be one of the strings specified in the protocols parameter when creating the
+	 * BaseWebSocket object
+	 */
+	get protocol(): string {
+		return this._ws ? this._ws.protocol : '';
+	}
 
-    /**
-     * An event listener to be called when the WebSocket connection's readyState changes to OPEN;
-     * this indicates that the connection is ready to send and receive data
-     */
-    public onopen?: (event: Event) => void = undefined;
+	/**
+	 * The current state of the connection; this is one of the Ready state constants
+	 */
+	get readyState(): number {
+		return this._ws ? this._ws.readyState : ReconnectingWebSocket.CONNECTING;
+	}
 
-    /**
-     * Closes the WebSocket connection or connection attempt, if any. If the connection is already
-     * CLOSED, this method does nothing
-     */
-    public close(code?: number, reason?: string) {
-        this._shouldReconnect = false;
-        if (!this._ws || this._ws.readyState === this.CLOSED) {
-            return;
-        }
-        this._ws.close(code, reason);
-    }
+	/**
+	 * The URL as resolved by the constructor
+	 */
+	get url(): string {
+		return this._ws ? this._ws.url : '';
+	}
 
-    /**
-     * Closes the WebSocket connection or connection attempt and connects again.
-     * Resets retry counter;
-     */
-    public reconnect(code?: number, reason?: string) {
-        this._shouldReconnect = true;
-        this._retryCount = -1;
-        if (!this._ws || this._ws.readyState === this.CLOSED) {
-            this._connect();
-        }
-        this._disconnect(code, reason);
-        this._connect();
-    }
+	private _acceptOpen() {
+		this._retryCount = 0;
+	}
 
-    /**
-     * Enqueues the specified data to be transmitted to the server over the WebSocket connection
-     */
-    public send(data: string | ArrayBuffer | Blob | ArrayBufferView) {
-        if (this._ws) {
-            this._ws.send(data);
-        }
-    }
+	/**
+	 * Assign event listeners to BaseWebSocket instance
+	 */
+	private _addListeners() {
+		this._debug('addListeners');
+		for (const [type, handler] of this.eventToHandler) {
+			this._ws!.addEventListener(type, handler);
+		}
+	}
 
-    /**
-     * Register an event handler of a specific event type
-     */
-    public addEventListener<K extends keyof WebSocketEventMap>(
-        type: K,
-        listener: ((event: WebSocketEventMap[K]) => void),
-    ): void {
-        if (this._listeners[type]) {
-            // @ts-ignore
-            this._listeners[type].push(listener);
-        }
-    }
+	private _connect() {
+		if (this._connectLock) {
+			return;
+		}
+		this._connectLock = true;
 
-    /**
-     * Removes an event listener
-     */
-    public removeEventListener<K extends keyof WebSocketEventMap>(
-        type: K,
-        listener: ((event: WebSocketEventMap[K]) => void),
-    ): void {
-        if (this._listeners[type]) {
-            // @ts-ignore
-            this._listeners[type] = this._listeners[type].filter(l => l !== listener);
-        }
-    }
+		const {
+			maxRetries = this._options.maxRetries,
+			connectionTimeout = this._options.connectionTimeout,
+			WebSocket = ReconnectingWebSocket.getGlobalWebSocket(),
+		} = this._options;
 
-    private _debug(...params: any[]) {
-        if (this._options.debug) {
-            // tslint:disable-next-line
-            console.log('RWS>', ...params);
-        }
-    }
+		if (this._retryCount >= maxRetries) {
+			this._debug('max retries reached', this._retryCount, '>=', maxRetries);
+			return;
+		}
 
-    private _getNextDelay() {
-        let delay = 0;
-        if (this._retryCount > 0) {
-            const {
-                reconnectionDelayGrowFactor = DEFAULT.reconnectionDelayGrowFactor,
-                minReconnectionDelay = DEFAULT.minReconnectionDelay,
-                maxReconnectionDelay = DEFAULT.maxReconnectionDelay,
-            } = this._options;
+		this._retryCount++;
 
-            delay =
-                minReconnectionDelay + Math.pow(this._retryCount - 1, reconnectionDelayGrowFactor);
-            if (delay > maxReconnectionDelay) {
-                delay = maxReconnectionDelay;
-            }
-        }
-        this._debug('next delay', delay);
-        return delay;
-    }
+		this._debug('connect', this._retryCount);
+		this._removeListeners();
+		if (!ReconnectingWebSocket.isWebSocket(WebSocket)) {
+			throw Error('No valid BaseWebSocket class provided');
+		}
+		this._wait()
+			.then(() => this._getNextUrl(this._url))
+			.then(url => {
+				this._debug('connect', {url, protocols: this._protocols});
+				this._ws = new WebSocket(url, this._protocols);
+				// @ts-ignore
+				this._ws!.binaryType = this._binaryType;
+				this._connectLock = false;
+				this._addListeners();
+				this._connectTimeout = setTimeout(() => this._handleTimeout(), connectionTimeout);
+			});
+	}
 
-    private _wait(): Promise<void> {
-        return new Promise(resolve => {
-            setTimeout(resolve, this._getNextDelay());
-        });
-    }
+	private _debug(...params: any[]) {
+		if (this._options.debug) {
+			// tslint:disable-next-line
+			console.log('RWS>', ...params);
+		}
+	}
 
-    /**
-     * @return Promise<string>
-     */
-    private _getNextUrl(urlProvider: UrlProvider): Promise<string> {
-        if (typeof urlProvider === 'string') {
-            return Promise.resolve(urlProvider);
-        }
-        if (typeof urlProvider === 'function') {
-            const url = urlProvider();
-            if (typeof url === 'string') {
-                return Promise.resolve(url);
-            }
-            if (url.then) {
-                return url;
-            }
-        }
-        throw Error('Invalid URL');
-    }
+	private _disconnect(code?: number, reason?: string) {
+		clearTimeout(this._connectTimeout);
+		if (!this._ws) {
+			return;
+		}
+		this._removeListeners();
+		try {
+			this._ws.close(code, reason);
+			this._handleClose(new CloseEvent(code, reason, this));
+		} catch (error) {
+			// ignore
+		}
+	}
 
-    private _connect() {
-        if (this._connectLock) {
-            return;
-        }
-        this._connectLock = true;
+	private _getNextDelay() {
+		let delay = 0;
+		if (this._retryCount > 0) {
+			const {
+				reconnectionDelayGrowFactor = this._options.reconnectionDelayGrowFactor,
+				minReconnectionDelay = this._options.minReconnectionDelay,
+				maxReconnectionDelay = this._options.maxReconnectionDelay,
+			} = this._options;
 
-        const {
-            maxRetries = DEFAULT.maxRetries,
-            connectionTimeout = DEFAULT.connectionTimeout,
-            WebSocket = getGlobalWebSocket(),
-        } = this._options;
+			delay =
+				minReconnectionDelay + Math.pow(this._retryCount - 1, reconnectionDelayGrowFactor);
+			if (delay > maxReconnectionDelay) {
+				delay = maxReconnectionDelay;
+			}
+		}
+		this._debug('next delay', delay);
+		return delay;
+	}
 
-        if (this._retryCount >= maxRetries) {
-            this._debug('max retries reached', this._retryCount, '>=', maxRetries);
-            return;
-        }
+	/**
+	 * @return Promise<string>
+	 */
+	private _getNextUrl(urlProvider: UrlProvider): Promise<string> {
+		if (typeof urlProvider === 'string') {
+			return Promise.resolve(urlProvider);
+		}
+		if (typeof urlProvider === 'function') {
+			const url = urlProvider();
+			if (typeof url === 'string') {
+				return Promise.resolve(url);
+			}
+			if (this._isPromise(url)) {
+				return url;
+			}
+		}
+		throw Error('Invalid URL');
+	}
 
-        this._retryCount++;
+	private _handleClose(event: CloseEvent) {
+		this._debug('close event');
 
-        this._debug('connect', this._retryCount);
-        this._removeListeners();
-        if (!isWebSocket(WebSocket)) {
-            throw Error('No valid WebSocket class provided');
-        }
-        this._wait()
-            .then(() => this._getNextUrl(this._url))
-            .then(url => {
-                this._debug('connect', {url, protocols: this._protocols});
-                this._ws = new WebSocket(url, this._protocols);
-                // @ts-ignore
-                this._ws!.binaryType = this._binaryType;
-                this._connectLock = false;
-                this._addListeners();
-                this._connectTimeout = setTimeout(() => this._handleTimeout(), connectionTimeout);
-            });
-    }
+		if (this.onclose) {
+			this.onclose(event);
+		}
+		this._listeners.close.forEach(listener => listener(event));
+	}
 
-    private _handleTimeout() {
-        this._debug('timeout event');
-        this._handleError(new ErrorEvent(Error('TIMEOUT'), this));
-    }
+	private _handleError(event: ErrorEvent) {
+		this._debug('error event', event.message);
+		this._disconnect(undefined, event.message === 'TIMEOUT' ? 'timeout' : undefined);
 
-    private _disconnect(code?: number, reason?: string) {
-        clearTimeout(this._connectTimeout);
-        if (!this._ws) {
-            return;
-        }
-        this._removeListeners();
-        try {
-            this._ws.close(code, reason);
-            this._handleClose(new CloseEvent(code, reason, this));
-        } catch (error) {
-            // ignore
-        }
-    }
+		if (this.onerror) {
+			this.onerror(event);
+		}
+		this._debug('exec error listeners');
+		this._listeners.error.forEach(listener => listener(event));
 
-    private _acceptOpen() {
-        this._retryCount = 0;
-    }
+		this._connect();
+	}
 
-    private _handleOpen(event: Event) {
-        this._debug('open event');
-        const {minUptime = DEFAULT.minUptime} = this._options;
+	private _handleMessage(event: MessageEvent) {
+		this._debug('message event');
 
-        clearTimeout(this._connectTimeout);
-        this._uptimeTimeout = setTimeout(() => this._acceptOpen(), minUptime);
+		if (this.onmessage) {
+			this.onmessage(event);
+		}
+		this._listeners.message.forEach(listener => listener(event));
+	}
 
-        this._debug('assign binary type');
-        // @ts-ignore
-        this._ws!.binaryType = this._binaryType;
+	private _handleOpen(event: Event) {
+		this._debug('open event');
+		const {minUptime = this._options.minUptime} = this._options;
 
-        if (this.onopen) {
-            this.onopen(event);
-        }
-        this._listeners.open.forEach(listener => listener(event));
-    }
+		clearTimeout(this._connectTimeout);
+		this._uptimeTimeout = setTimeout(() => this._acceptOpen(), minUptime);
 
-    private _handleMessage(event: MessageEvent) {
-        this._debug('message event');
+		this._debug('assign binary type');
+		// @ts-ignore
+		this._ws!.binaryType = this._binaryType;
 
-        if (this.onmessage) {
-            this.onmessage(event);
-        }
-        this._listeners.message.forEach(listener => listener(event));
-    }
+		if (this.onopen) {
+			this.onopen(event);
+		}
+		this._listeners.open.forEach(listener => listener(event));
+	}
 
-    private _handleError(event: ErrorEvent) {
-        this._debug('error event', event.message);
-        this._disconnect(undefined, event.message === 'TIMEOUT' ? 'timeout' : undefined);
+	private _handleTimeout() {
+		this._debug('timeout event');
+		this._handleError(new ErrorEvent(Error('TIMEOUT'), this));
+	}
 
-        if (this.onerror) {
-            this.onerror(event);
-        }
-        this._debug('exec error listeners');
-        this._listeners.error.forEach(listener => listener(event));
+	private _isPromise(obj: string | Promise<string>) {
+		return !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
+	}
 
-        this._connect();
-    }
+	/**
+	 * Remove event listeners to BaseWebSocket instance
+	 */
+	private _removeListeners() {
+		if (!this._ws) {
+			return;
+		}
+		this._debug('removeListeners');
+		for (const [type, handler] of this.eventToHandler) {
+			this._ws.removeEventListener(type, handler);
+		}
+	}
 
-    private _handleClose(event: CloseEvent) {
-        this._debug('close event');
+	private _wait(): Promise<void> {
+		return new Promise(resolve => {
+			setTimeout(resolve, this._getNextDelay());
+		});
+	}
 
-        if (this.onclose) {
-            this.onclose(event);
-        }
-        this._listeners.close.forEach(listener => listener(event));
-    }
+	/**
+	 * Register an event handler of a specific event type
+	 */
+	public addEventListener<K extends keyof WebSocketEventMap>(
+		type: K,
+		listener: ((event: WebSocketEventMap[K]) => void),
+	): void {
+		if (this._listeners[type]) {
+			// @ts-ignore
+			this._listeners[type].push(listener);
+		}
+	}
 
-    /**
-     * Remove event listeners to WebSocket instance
-     */
-    private _removeListeners() {
-        if (!this._ws) {
-            return;
-        }
-        this._debug('removeListeners');
-        for (const [type, handler] of this.eventToHandler) {
-            this._ws.removeEventListener(type, handler);
-        }
-    }
+	/**
+	 * Closes the BaseWebSocket connection or connection attempt, if any. If the connection is already
+	 * CLOSED, this method does nothing
+	 */
+	public close(code?: number, reason?: string) {
+		this._shouldReconnect = false;
+		if (!this._ws || this._ws.readyState === this.CLOSED) {
+			return;
+		}
+		this._ws.close(code, reason);
+	}
 
-    /**
-     * Assign event listeners to WebSocket instance
-     */
-    private _addListeners() {
-        this._debug('addListeners');
-        for (const [type, handler] of this.eventToHandler) {
-            this._ws!.addEventListener(type, handler);
-        }
-    }
+	private static getGlobalWebSocket(): WebSocket | undefined {
+		if (typeof WebSocket !== 'undefined') {
+			// @ts-ignore
+			return WebSocket;
+		}
+	}
+
+	public static isWebSocket(w: any) {
+		return typeof w === 'function' && w.CLOSING === 2;
+	}
+
+	/**
+	 * Closes the BaseWebSocket connection or connection attempt and connects again.
+	 * Resets retry counter;
+	 */
+	public reconnect(code?: number, reason?: string) {
+		this._shouldReconnect = true;
+		this._retryCount = -1;
+		if (!this._ws || this._ws.readyState === this.CLOSED) {
+			this._connect();
+		}
+		this._disconnect(code, reason);
+		this._connect();
+	}
+
+	/**
+	 * Removes an event listener
+	 */
+	public removeEventListener<K extends keyof WebSocketEventMap>(
+		type: K,
+		listener: ((event: WebSocketEventMap[K]) => void),
+	): void {
+		if (this._listeners[type]) {
+			// @ts-ignore
+			this._listeners[type] = this._listeners[type].filter(l => l !== listener);
+		}
+	}
+
+	/**
+	 * Enqueues the specified data to be transmitted to the server over the BaseWebSocket connection
+	 */
+	public send(data: string | ArrayBuffer | Blob | ArrayBufferView) {
+		if (this._ws) {
+			this._ws.send(data);
+		}
+	}
+
+	constructor(url: UrlProvider, protocols?: string | string[], options: IReconOptions = {}) {
+		this._url = url;
+		this._protocols = protocols;
+		this._options = options;
+		this._connect();
+
+		if (Object.keys(options).length === 0) {
+			this._options = <IReconOptions>{
+				maxReconnectionDelay: 10000,
+				minReconnectionDelay: 1000 + Math.random() * 4000,
+				minUptime: 5000,
+				reconnectionDelayGrowFactor: 1.3,
+				connectionTimeout: 4000,
+				maxRetries: Infinity,
+				debug: false,
+			};
+		} else {
+			this._options = options;
+		}
+	}
+
 }
