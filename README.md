@@ -38,21 +38,6 @@ let socket: ReconnectingWebSocket = new ReconnectingWebSocket('ws://my.site.com'
 
 ### Options
 
-#### Available options
-
-```typescript
-type Options = {
-    WebSocket?: any; // WebSocket constructor, if none provided, defaults to global WebSocket
-    maxReconnectionDelay?: number; // max delay in ms between reconnections
-    minReconnectionDelay?: number; // min delay in ms between reconnections
-    reconnectionDelayGrowFactor?: number; // how fast the reconnection delay grows
-    minUptime?: number; // min time in ms do consider connection as stable
-    connectionTimeout?: number; // retry connect if not connected after this time, in ms
-    maxRetries?: number; // maximum number of retries
-    debug?: boolean; // enables debug output
-};
-```
-
 #### Default values
 
 ```javascript
