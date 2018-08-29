@@ -426,7 +426,7 @@ export default class ReconnectingWebSocket {
 		}
 	}
 
-	constructor(url: UrlProvider, protocols?: string | string[], options: IReconOptions = {}) {
+	constructor(url: UrlProvider, options: IReconOptions = {}, protocols?: string | string[]) {
 		this._url = url;
 		this._protocols = protocols;
 		this._options = options;
