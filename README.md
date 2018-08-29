@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/michael-mcanulty/reconnecting-websocket.svg?branch=master)](michael-mcanulty/reconnecting-websocket)
+
 # Reconnecting WebSocket
 
 WebSocket that will automatically reconnect if the connection is closed.
