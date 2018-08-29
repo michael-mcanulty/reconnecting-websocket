@@ -1,7 +1,5 @@
 # Reconnecting WebSocket
 
-[![Build Status](https://travis-ci.org/pladaria/reconnecting-websocket.svg?branch=master)](https://travis-ci.org/michael-mcanulty/reconnecting-websocket.svg?branch=master)
-
 WebSocket that will automatically reconnect if the connection is closed.
 
 ## Features
