@@ -1,7 +1,6 @@
 # Reconnecting WebSocket
 
-[![Build Status](https://travis-ci.org/pladaria/reconnecting-websocket.svg?branch=master)](https://travis-ci.org/pladaria/reconnecting-websocket)
-[![Coverage Status](https://coveralls.io/repos/github/pladaria/reconnecting-websocket/badge.svg?branch=master&v=1)](https://coveralls.io/github/pladaria/reconnecting-websocket?branch=master)
+[![Build Status](https://travis-ci.org/pladaria/reconnecting-websocket.svg?branch=master)](https://travis-ci.org/michael-mcanulty/reconnecting-websocket.svg?branch=master)
 
 WebSocket that will automatically reconnect if the connection is closed.
 
@@ -17,28 +16,18 @@ WebSocket that will automatically reconnect if the connection is closed.
 *   AMD build available (see dist folder)
 *   Allows changing server URL between reconnections
 
-## Install
+## Use
 
-```bash
-npm install --save reconnecting-websocket
 ```
-
-## Usage
-
-### Compatible with WebSocket Browser API
-
-So this documentation should be valid:
-[MDN WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket).
-
-Ping me if you find any problems. Or, even better, write a test for your case and make a pull
-request :)
+Add the reconnecting-websocket.ts file directly to your project.
+```
 
 ### Simple usage
 
-```javascript
-import ReconnectingWebSocket from 'reconnecting-websocket';
+```typescript
+import {default as ReconnectingWebSocket, IReconOptions} from "./ReconnectingWebSocket/ReconnectingWebSocket";
 
-const rws = new ReconnectingWebSocket('ws://my.site.com');
+let socket: ReconnectingWebSocket = new ReconnectingWebSocket('ws://my.site.com', this._reconOptions);
 
 rws.addEventListener('open', () => {
     rws.send('hello!');
