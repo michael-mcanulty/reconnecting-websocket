@@ -26,7 +26,6 @@
         "ts-node": "^3.3.0"
     },
     "dependencies": {
-        "ws": "^5.2.1",
-        "html5-websocket": "^2.0.2"
+        "ws": "^5.2.1"
     },
 }
